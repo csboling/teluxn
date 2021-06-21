@@ -1,0 +1,19 @@
+|30 @Gpio [ &vector $2 &out $1 ]
+|80 @Controller [ &vector $2 &button $1 &key $1 ]
+
+|0100 ( -> )
+	;on-button .Controller/vector DEO2
+	;on-trig .Gpio/vector DEO2
+
+BRK
+
+@on-button ( -> )
+BRK
+
+@on-trig ( -> )
+	 ;count
+	 LDAk #01 ADD #0f AND ;count STA
+	 LDA .Gpio/out DEO
+BRK
+
+@count #00
