@@ -122,9 +122,6 @@ void init_control(void) {
     mempoke16(devscreen->dat, 0x2, 128);
     mempoke16(devscreen->dat, 0x4, 64);
 
-    draw_str("devices ok", line++, 15, 0);
-    refresh_screen();
-
     loadrom(&uxn, uxn_rom);
     draw_str("load", line++, 15, 0);
     if (!evaluxn(&uxn, PAGE_PROGRAM)) {

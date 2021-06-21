@@ -1,3 +1,4 @@
 [submodule "multipass"]
 	path = multipass
-	url = https://github.com/scanner-darkly/multipass
+	url = https://github.com/csboling/multipass
+	branch = csboling
