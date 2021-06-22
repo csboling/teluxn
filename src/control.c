@@ -13,10 +13,14 @@
 #include "string.h"
 #include "conf_usb_host.h"  // needed in order to include "usb_protocol_hid.h"
 #include "usb_protocol_hid.h"
+#include "region.h"
 
 #include "control.h"
 #include "interface.h"
 #include "engine.h"
+
+#include "keyboard_helper.h"
+#include "line_editor.h"
 
 #include "rom.h"
 #include "uxn/uxn.h"
@@ -28,6 +32,16 @@ int selected_preset;
 
 // ----------------------------------------------------------------------------
 // firmware dependent stuff starts here
+
+enum page_t {
+    PAGE_LIVE,
+    PAGE_EDIT,
+    PAGE_ROM,
+};
+enum page_t curr_page = PAGE_LIVE;
+bool screen_dirty = false;
+region screen_lines[8];
+line_editor_t line_editor;
 
 Uxn uxn;
 Device *devscreen, *devctrl, *devgpio;
@@ -58,9 +72,19 @@ void init_presets(void) {
 }
 
 void screen_talk(Device *d, Uint8 b0, Uint8 w) {
-    (void)d;
-    (void)b0;
-    (void)w;
+    /* if(w && b0 == 0xe) { */
+    /*     Uint16 x = mempeek16(d->dat, 0x8); */
+    /*     Uint16 y = mempeek16(d->dat, 0xa); */
+    /*     Uint8 *addr = &d->mem[mempeek16(d->dat, 0xc)]; */
+    /*     Layer *layer = d->dat[0xe] >> 4 & 0x1 ? &ppu.fg : &ppu.bg; */
+    /*     Uint8 mode = d->dat[0xe] >> 5; */
+    /*     if(!mode) */
+    /*         putpixel(&ppu, layer, x, y, d->dat[0xe] & 0x3); */
+    /*     else if(mode-- & 0x1) */
+    /*         puticn(&ppu, layer, x, y, addr, d->dat[0xe] & 0xf, mode & 0x2, mode & 0x4); */
+    /*     else */
+    /*         putchr(&ppu, layer, x, y, addr, d->dat[0xe] & 0xf, mode & 0x2, mode & 0x4); */
+    /* } */
 }
 
 void gpio_talk(Device *d, Uint8 b0, Uint8 w) {
@@ -122,8 +146,8 @@ void init_control(void) {
     mempoke16(devscreen->dat, 0x2, 128);
     mempoke16(devscreen->dat, 0x4, 64);
 
-    loadrom(&uxn, uxn_rom);
     draw_str("load", line++, 15, 0);
+    loadrom(&uxn, uxn_rom);
     if (!evaluxn(&uxn, PAGE_PROGRAM)) {
         draw_str("prog error", line++, 15, 0);
         refresh_screen();
@@ -132,7 +156,7 @@ void init_control(void) {
     else {
         draw_str("prog done", line++, 15, 0);
         refresh_screen();
-        return;
+        screen_dirty = true;
     }
 }
 
@@ -152,6 +176,26 @@ void doctrl(Uxn *u, u8 mod, u8 z) {
         devctrl->dat[2] |= flag;
     else if (flag)
         devctrl->dat[2] &= (~flag);
+}
+
+static void eval_line(Uxn *u, char *buf, size_t len) {
+}
+
+static bool process_sys_keys(u8 mod, u8 key, u8 z) {
+    switch (curr_page) {
+    case PAGE_LIVE:
+        if (match_no_mod(mod, key, HID_ENTER)) {
+            eval_line(&uxn, line_editor.buffer, line_editor.length);
+        }
+        else {
+            line_editor_process_keys(&line_editor, key, mod, false);
+        }
+        return true;
+    case PAGE_EDIT:
+        return true;
+    default:
+        return false;
+    }
 }
 
 void process_event(u8 event, u8 *data, u8 length) {
@@ -182,7 +226,9 @@ void process_event(u8 event, u8 *data, u8 length) {
             if (length == 3) {
                 devctrl->dat[3] = data[1];
                 doctrl(&uxn, data[0], data[2]);
-                evaluxn(&uxn, mempeek16(devctrl->dat, 0));
+                if (!process_sys_keys(data[0], data[1], data[2])) {
+                    evaluxn(&uxn, mempeek16(devctrl->dat, 0));
+                }
             }
             break;
 
@@ -236,4 +282,14 @@ void render_grid(void) {
 
 void render_arc(void) {
     // render arc LEDs here or leave blank if not used
+}
+
+void render_screen(void) {
+    if (!screen_dirty) return;
+    clear_screen();
+    switch (curr_page) {
+    case PAGE_LIVE:
+        line_editor_draw(&line_editor, '>', &screen_lines[7]);
+    }
+    refresh_screen();
 }

@@ -1,5 +1,5 @@
 // ----------------------------------------------------------------------------
-// defines functions for multipass to send events to the controller (grid 
+// defines functions for multipass to send events to the controller (grid
 // presses etc)
 //
 // defines functions for engine to send updates (note on etc)
@@ -9,7 +9,7 @@
 
 #pragma once
 #include "types.h"
-
+#include "region.h"
 
 // ----------------------------------------------------------------------------
 // firmware dependent stuff starts here
@@ -31,6 +31,7 @@ typedef struct {
 // ----------------------------------------------------------------------------
 // firmware settings/variables main.c needs to know
 
+extern region screen_lines[8];
 
 // ----------------------------------------------------------------------------
 // functions control.c needs to implement (will be called from main.c)
@@ -40,6 +41,7 @@ void init_control(void);
 void process_event(u8 event, u8 *data, u8 length);
 void render_grid(void);
 void render_arc(void);
+void render_screen(void);
 
 
 // ----------------------------------------------------------------------------
