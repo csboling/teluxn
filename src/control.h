@@ -31,8 +31,6 @@ typedef struct {
 // ----------------------------------------------------------------------------
 // firmware settings/variables main.c needs to know
 
-extern region screen_lines[8];
-
 // ----------------------------------------------------------------------------
 // functions control.c needs to implement (will be called from main.c)
 

@@ -14,15 +14,12 @@
 #include "conf_usb_host.h"  // needed in order to include "usb_protocol_hid.h"
 #include "usb_protocol_hid.h"
 #include "region.h"
+#include "util.h"
 
 #include "control.h"
 #include "interface.h"
 #include "engine.h"
 
-#include "keyboard_helper.h"
-#include "line_editor.h"
-
-#include "rom.h"
 #include "uxn/uxn.h"
 
 preset_meta_t meta;
@@ -34,14 +31,14 @@ int selected_preset;
 // firmware dependent stuff starts here
 
 enum page_t {
-    PAGE_LIVE,
-    PAGE_EDIT,
-    PAGE_ROM,
+    PAGE_BOOT,
+    PAGE_LOAD,
+    PAGE_RUN,
 };
-enum page_t curr_page = PAGE_LIVE;
+enum page_t curr_page = PAGE_BOOT;
 bool screen_dirty = false;
-region screen_lines[8];
-line_editor_t line_editor;
+bool button_state;
+bool msc_connected;
 
 Uxn uxn;
 Device *devscreen, *devctrl, *devgpio;
@@ -57,18 +54,6 @@ void loadrom(Uxn *u, char *mem);
 void doctrl(Uxn *u, u8 mod, u8 key);
 
 void init_presets(void) {
-    // called by main.c if there are no presets saved to flash yet
-    // initialize meta - some meta data to be associated with a preset, like a glyph
-    // initialize shared (any data that should be shared by all presets) with default values
-    // initialize preset with default values
-    // store them to flash
-
-    /* for (u8 i = 0; i < get_preset_count(); i++) { */
-    /*     store_preset_to_flash(i, &meta, &preset); */
-    /* } */
-
-    /* store_shared_data_to_flash(&shared); */
-    /* store_preset_index(0); */
 }
 
 void screen_talk(Device *d, Uint8 b0, Uint8 w) {
@@ -128,17 +113,17 @@ void init_control(void) {
     portuxn(&uxn, 0x0, "---", nil_talk);
     portuxn(&uxn, 0x1, "console", nil_talk);
     devscreen = portuxn(&uxn, 0x2, "screen", screen_talk);
-    devgpio = portuxn(&uxn, 0x3, "gpio", gpio_talk);
-    portuxn(&uxn, 0x4, "analog", nil_talk);
-    portuxn(&uxn, 0x5, "ii", ii_talk);
+    portuxn(&uxn, 0x3, "---", nil_talk);
+    portuxn(&uxn, 0x4, "---", nil_talk);
+    portuxn(&uxn, 0x5, "---", nil_talk);
     portuxn(&uxn, 0x6, "---", nil_talk);
     portuxn(&uxn, 0x7, "midi", nil_talk);
     devctrl = portuxn(&uxn, 0x8, "controller", nil_talk);
     portuxn(&uxn, 0x9, "---", nil_talk);
     portuxn(&uxn, 0xa, "file", nil_talk);
     portuxn(&uxn, 0xb, "---", nil_talk);
-    portuxn(&uxn, 0xc, "---", nil_talk);
-    portuxn(&uxn, 0xd, "---", nil_talk);
+    devgpio = portuxn(&uxn, 0xc, "gpio", gpio_talk);
+    portuxn(&uxn, 0xd, "ii", ii_talk);
     portuxn(&uxn, 0xe, "---", nil_talk);
     portuxn(&uxn, 0xf, "---", nil_talk);
 
@@ -146,18 +131,8 @@ void init_control(void) {
     mempoke16(devscreen->dat, 0x2, 128);
     mempoke16(devscreen->dat, 0x4, 64);
 
-    draw_str("load", line++, 15, 0);
-    loadrom(&uxn, uxn_rom);
-    if (!evaluxn(&uxn, PAGE_PROGRAM)) {
-        draw_str("prog error", line++, 15, 0);
-        refresh_screen();
-        return;
-    }
-    else {
-        draw_str("prog done", line++, 15, 0);
-        refresh_screen();
-        screen_dirty = true;
-    }
+    draw_str("ok. load roms from usb", line++, 15, 0);
+    refresh_screen();
 }
 
 void doctrl(Uxn *u, u8 mod, u8 z) {
@@ -178,24 +153,22 @@ void doctrl(Uxn *u, u8 mod, u8 z) {
         devctrl->dat[2] &= (~flag);
 }
 
-static void eval_line(Uxn *u, char *buf, size_t len) {
-}
-
 static bool process_sys_keys(u8 mod, u8 key, u8 z) {
-    switch (curr_page) {
-    case PAGE_LIVE:
-        if (match_no_mod(mod, key, HID_ENTER)) {
-            eval_line(&uxn, line_editor.buffer, line_editor.length);
-        }
-        else {
-            line_editor_process_keys(&line_editor, key, mod, false);
-        }
-        return true;
-    case PAGE_EDIT:
-        return true;
-    default:
-        return false;
-    }
+    return false;
+    /* switch (curr_page) { */
+    /* case PAGE_BOOT: */
+    /*     if (match_no_mod(mod, key, HID_ENTER)) { */
+    /*         eval_line(&uxn, line_editor.buffer, line_editor.length); */
+    /*     } */
+    /*     else { */
+    /*         line_editor_process_keys(&line_editor, key, mod, z == 1); */
+    /*     } */
+    /*     return true; */
+    /* /\* case PAGE_EDIT: *\/ */
+    /* /\*     return true; *\/ */
+    /* default: */
+    /*     return false; */
+    /* } */
 }
 
 void process_event(u8 event, u8 *data, u8 length) {
@@ -235,8 +208,40 @@ void process_event(u8 event, u8 *data, u8 length) {
         case ARC_ENCODER_COARSE:
             break;
 
-        case FRONT_BUTTON_PRESSED:
+        case FRONT_BUTTON_PRESSED: {
+            int line = 0;
+            if (curr_page == PAGE_LOAD) {
+                if (rom_filename_ct > 0 && selected_rom < rom_filename_ct) {
+                    if (!load_rom_file(&uxn, rom_filenames[selected_rom])) {
+                        draw_str("error loading rom", line++, 15, 0);
+                        refresh_screen();
+                        return;
+                    }
+                    if (!evaluxn(&uxn, PAGE_PROGRAM)) {
+                        draw_str("error running rom", line++, 15, 0);
+                        refresh_screen();
+                        return;
+                    }
+                    char s[36];
+                    strcpy("running: ", s);
+                    strcpy(rom_filenames[selected_rom], s);
+                    draw_str(s, line++, 15, 0);
+                    refresh_screen();
+                    curr_page = PAGE_RUN;
+                    return;
+                }
+                else {
+                    draw_str("no rom chosen", line++, 15, 0);
+                    refresh_screen();
+                    return;
+                }
+            }
+            if (length == 1) {
+                button_state = data[0];
+                screen_dirty = true;
+            }
             break;
+        }
 
         case FRONT_BUTTON_HELD:
             break;
@@ -271,6 +276,38 @@ void process_event(u8 event, u8 *data, u8 length) {
         case SHNTH_BUTTON:
             break;
 
+        case MASS_STORAGE_CONNECTED:
+            clear_screen();
+            if (length != 1) {
+                draw_str("missing event data", 0, 15, 0);
+                refresh_screen();
+                return;
+            }
+            msc_connected = data[0] != 0;
+
+            if (msc_connected) {
+                int line = 0;
+                int files = list_files();
+                if (files > 0) {
+                    curr_page = PAGE_LOAD;
+                    screen_dirty = true;
+                    return;
+                }
+                screen_dirty = false;
+                if (files < 0) {
+                    char s[36];
+                    strcpy(s, "usb err ");
+                    itoa(-files, s + 8, 10);
+                    draw_str(s, line++, 15, 0);
+                    refresh_screen();
+                }
+                else {
+                    draw_str("no .rom files", line++, 15, 0);
+                    refresh_screen();
+                }
+            }
+            break;
+
         default:
             break;
     }
@@ -287,9 +324,17 @@ void render_arc(void) {
 void render_screen(void) {
     if (!screen_dirty) return;
     clear_screen();
+
     switch (curr_page) {
-    case PAGE_LIVE:
-        line_editor_draw(&line_editor, '>', &screen_lines[7]);
+    case PAGE_LOAD:
+        for (int i = 0; i < rom_filename_ct; i++) {
+            draw_str(rom_filenames[i], i, 15, selected_rom == i ? 7 : 0);
+        }
+        break;
+    default:
+        draw_str("button held", 6, button_state ? 15 : 7, 0);
+        draw_str("msc connected", 7, msc_connected ? 15 : 7, 0);
+        break;
     }
     refresh_screen();
 }

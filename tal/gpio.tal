@@ -1,4 +1,4 @@
-|30 @Gpio [ &vector $2 &out $1 ]
+|c0 @Gpio [ &vector $2 &out $1 ]
 |80 @Controller [ &vector $2 &button $1 &key $1 ]
 
 |0100 ( -> )
