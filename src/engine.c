@@ -36,18 +36,18 @@ static bool mount_drive(void) {
     return false;
 }
 
-static bool open_drive(void) {
+int open_drive(void) {
     nav_reset();
     for (uint8_t i = 0; i < FS_NB_NAVIGATOR; i++) {
         if (nav_select(i)) {
 	    if (mount_drive()) {
-	        return true;
+	        return 0;
 	    }
 	}
     }
     nav_filelist_reset();
     nav_exit();
-    return false;
+    return -fs_g_status;
 }
 
 static bool str_ends_with(const char *str, const char *suffix)
@@ -62,10 +62,6 @@ static bool str_ends_with(const char *str, const char *suffix)
 }
 
 int list_files(void) {
-    if (!open_drive()) {
-        return -fs_g_status;
-    }
-
     if (!nav_filelist_single_enable(FS_FILE)) {
         return -fs_g_status;
     }

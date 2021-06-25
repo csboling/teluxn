@@ -13,7 +13,7 @@
 #include "string.h"
 #include "conf_usb_host.h"  // needed in order to include "usb_protocol_hid.h"
 #include "usb_protocol_hid.h"
-#include "region.h"
+#include "screen.h"
 #include "util.h"
 
 #include "control.h"
@@ -21,6 +21,7 @@
 #include "engine.h"
 
 #include "uxn/uxn.h"
+#include "uxn/ppu.h"
 
 preset_meta_t meta;
 preset_data_t preset;
@@ -41,6 +42,9 @@ bool button_state;
 bool msc_connected;
 
 Uxn uxn;
+/* Ppu ppu; */
+/* uint8_t bg_pixels[128 * 64]; */
+/* uint8_t fg_pixels[128 * 64]; */
 Device *devscreen, *devctrl, *devgpio;
 
 // ----------------------------------------------------------------------------
@@ -56,6 +60,10 @@ void doctrl(Uxn *u, u8 mod, u8 key);
 void init_presets(void) {
 }
 
+void system_talk(Device *d, Uint8 b0, Uint8 w) {
+
+}
+
 void screen_talk(Device *d, Uint8 b0, Uint8 w) {
     /* if(w && b0 == 0xe) { */
     /*     Uint16 x = mempeek16(d->dat, 0x8); */
@@ -63,10 +71,25 @@ void screen_talk(Device *d, Uint8 b0, Uint8 w) {
     /*     Uint8 *addr = &d->mem[mempeek16(d->dat, 0xc)]; */
     /*     Layer *layer = d->dat[0xe] >> 4 & 0x1 ? &ppu.fg : &ppu.bg; */
     /*     Uint8 mode = d->dat[0xe] >> 5; */
+
+    /*     uint8_t color = d->dat[0xe] & 0xf; */
+    /*     uint8_t flipx = mode & 0x2; */
+    /*     uint8_t flipy = mode & 0x4; */
+
     /*     if(!mode) */
-    /*         putpixel(&ppu, layer, x, y, d->dat[0xe] & 0x3); */
-    /*     else if(mode-- & 0x1) */
+    /*         putpixel(&ppu, layer, x, y, color); */
+    /*     else if(mode-- & 0x1) { */
+    /*         /\* for (int v = 0; v < 8; v++) { *\/ */
+    /*         /\*     for (int h = 0; h < 8; h++) { *\/ */
+    /*         /\*         uint8_t ch1 = ((addr[v] >> (7 - h)) & 0x1); *\/ */
+    /*         /\*         if (ch1 == 1 || (color != 0x05 && color != 0x0a && color != 0x0f)) { *\/ */
+    /*         /\*             screen_pixels[y + (flipy ? 7 - v : v) * 128 + x + (flipx ? 7 - h : h)] = *\/ */
+    /*         /\*                 ch1 ? color % 4 : color / 4; *\/ */
+    /*         /\*         } *\/ */
+    /*         /\*     } *\/ */
+    /*         /\* } *\/ */
     /*         puticn(&ppu, layer, x, y, addr, d->dat[0xe] & 0xf, mode & 0x2, mode & 0x4); */
+    /*     } */
     /*     else */
     /*         putchr(&ppu, layer, x, y, addr, d->dat[0xe] & 0xf, mode & 0x2, mode & 0x4); */
     /* } */
@@ -103,13 +126,18 @@ void loadrom(Uxn *u, char *mem) {
 void init_control(void) {
     clear_screen();
     int line = 0;
-    draw_str("teluxn", line++, 15, 0);
+    draw_str("teluxn - uxn vm on teletype", line++, 15, 0);
     refresh_screen();
     if (!bootuxn(&uxn)) {
         draw_str("uxn boot error", line++, 15, 0);
         refresh_screen();
         return;
     }
+    /* if (!initppu(&ppu, 16, 8, NULL, fg_pixels)) { */
+    /*     draw_str("ppu error", line++, 15, 0); */
+    /*     refresh_screen(); */
+    /*     return; */
+    /* } */
     portuxn(&uxn, 0x0, "---", nil_talk);
     portuxn(&uxn, 0x1, "console", nil_talk);
     devscreen = portuxn(&uxn, 0x2, "screen", screen_talk);
@@ -209,8 +237,11 @@ void process_event(u8 event, u8 *data, u8 length) {
             break;
 
         case FRONT_BUTTON_PRESSED: {
+            if (length != 1) return;
+            button_state = data[0];
             int line = 0;
-            if (curr_page == PAGE_LOAD) {
+            if (curr_page == PAGE_LOAD && !button_state) {
+                clear_screen();
                 if (rom_filename_ct > 0 && selected_rom < rom_filename_ct) {
                     if (!load_rom_file(&uxn, rom_filenames[selected_rom])) {
                         draw_str("error loading rom", line++, 15, 0);
@@ -228,6 +259,7 @@ void process_event(u8 event, u8 *data, u8 length) {
                     draw_str(s, line++, 15, 0);
                     refresh_screen();
                     curr_page = PAGE_RUN;
+                    screen_dirty = true;
                     return;
                 }
                 else {
@@ -235,10 +267,6 @@ void process_event(u8 event, u8 *data, u8 length) {
                     refresh_screen();
                     return;
                 }
-            }
-            if (length == 1) {
-                button_state = data[0];
-                screen_dirty = true;
             }
             break;
         }
@@ -276,37 +304,48 @@ void process_event(u8 event, u8 *data, u8 length) {
         case SHNTH_BUTTON:
             break;
 
-        case MASS_STORAGE_CONNECTED:
+        case MASS_STORAGE_CONNECTED: {
+            int line = 0;
             clear_screen();
             if (length != 1) {
-                draw_str("missing event data", 0, 15, 0);
+                draw_str("missing event data", line++, 15, 0);
                 refresh_screen();
                 return;
             }
             msc_connected = data[0] != 0;
 
             if (msc_connected) {
-                int line = 0;
+                draw_str("scan for files", line++, 15, 0);
+                refresh_screen();
+
+                int err = open_drive();
+                if (err < 0) {
+                    char s[36];
+                    strcpy(s, "usb err ");
+                    itoa(-err, s + 8, 10);
+                    draw_str(s, line++, 15, 0);
+                    refresh_screen();
+                    return;
+                }
+
                 int files = list_files();
                 if (files > 0) {
                     curr_page = PAGE_LOAD;
                     screen_dirty = true;
                     return;
                 }
-                screen_dirty = false;
-                if (files < 0) {
-                    char s[36];
-                    strcpy(s, "usb err ");
-                    itoa(-files, s + 8, 10);
-                    draw_str(s, line++, 15, 0);
-                    refresh_screen();
-                }
                 else {
                     draw_str("no .rom files", line++, 15, 0);
                     refresh_screen();
+                    return;
                 }
             }
+            else {
+                draw_str("msc disconnected", line++, 15, 0);
+                refresh_screen();
+            }
             break;
+        }
 
         default:
             break;
@@ -321,11 +360,22 @@ void render_arc(void) {
     // render arc LEDs here or leave blank if not used
 }
 
+/* static void blend_screen(Ppu *p, uint8_t *buf) { */
+/*     for (int i = 0; i < 128 * 64; i++) { */
+/*         buf[i] = p->fg.pixels[i * 4] ? 15 : 0; */
+/*     } */
+/* } */
+
 void render_screen(void) {
+    /* if (curr_page == PAGE_RUN) { */
+    /*     /\* blend_screen(&ppu, screen_pixels); *\/ */
+    /*     screen_draw_region(0, 0, 128, 64, fg_pixels); */
+    /* } */
+
     if (!screen_dirty) return;
     clear_screen();
-
     switch (curr_page) {
+    case PAGE_RUN:
     case PAGE_LOAD:
         for (int i = 0; i < rom_filename_ct; i++) {
             draw_str(rom_filenames[i], i, 15, selected_rom == i ? 7 : 0);

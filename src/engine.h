@@ -14,5 +14,6 @@ extern int selected_rom;
 extern int rom_filename_ct;
 extern char rom_filenames[FILENAME_CT][FILENAME_LEN];
 
+int open_drive(void);
 int list_files(void);
 bool load_rom_file(Uxn *u, char* fname);
