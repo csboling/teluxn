@@ -27,6 +27,8 @@ typedef struct {
 typedef struct {
 } preset_data_t;
 
+extern uint8_t screen_pixels[128 * 64];
+
 
 // ----------------------------------------------------------------------------
 // firmware settings/variables main.c needs to know

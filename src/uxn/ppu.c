@@ -69,7 +69,7 @@ putpixel(Ppu *p, Layer *layer, uint16_t x, uint16_t y, uint8_t color)
 {
 	if(x >= p->width || y >= p->height)
 		return;
-	layer->pixels[y * p->width + x] = layer->colors[color];
+	layer->pixels[y * p->width + x] = 15; /* layer->colors[color]; */
 }
 
 void

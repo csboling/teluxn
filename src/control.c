@@ -42,9 +42,9 @@ bool button_state;
 bool msc_connected;
 
 Uxn uxn;
-/* Ppu ppu; */
+Ppu ppu;
 /* uint8_t bg_pixels[128 * 64]; */
-/* uint8_t fg_pixels[128 * 64]; */
+uint8_t screen_pixels[128 * 64];
 Device *devscreen, *devctrl, *devgpio;
 
 // ----------------------------------------------------------------------------
@@ -60,39 +60,37 @@ void doctrl(Uxn *u, u8 mod, u8 key);
 void init_presets(void) {
 }
 
-void system_talk(Device *d, Uint8 b0, Uint8 w) {
-
-}
-
 void screen_talk(Device *d, Uint8 b0, Uint8 w) {
-    /* if(w && b0 == 0xe) { */
-    /*     Uint16 x = mempeek16(d->dat, 0x8); */
-    /*     Uint16 y = mempeek16(d->dat, 0xa); */
-    /*     Uint8 *addr = &d->mem[mempeek16(d->dat, 0xc)]; */
-    /*     Layer *layer = d->dat[0xe] >> 4 & 0x1 ? &ppu.fg : &ppu.bg; */
-    /*     Uint8 mode = d->dat[0xe] >> 5; */
+    if(w && b0 == 0xe) {
+        Uint16 x = mempeek16(d->dat, 0x8) & 0x7F;
+        Uint16 y = mempeek16(d->dat, 0xa) & 0x3F;
+    /*     /\* Uint8 *addr = &d->mem[mempeek16(d->dat, 0xc)]; *\/ */
+    /*     /\* Layer *layer = d->dat[0xe] >> 4 & 0x1 ? &ppu.fg : &ppu.bg; *\/ */
+    /*     /\* Uint8 mode = d->dat[0xe] >> 5; *\/ */
 
-    /*     uint8_t color = d->dat[0xe] & 0xf; */
-    /*     uint8_t flipx = mode & 0x2; */
-    /*     uint8_t flipy = mode & 0x4; */
+        /* uint8_t color = d->dat[0xe] & 0xf; */
+        /* uint8_t flipx = mode & 0x2; */
+        /* uint8_t flipy = mode & 0x4; */
 
-    /*     if(!mode) */
-    /*         putpixel(&ppu, layer, x, y, color); */
-    /*     else if(mode-- & 0x1) { */
-    /*         /\* for (int v = 0; v < 8; v++) { *\/ */
-    /*         /\*     for (int h = 0; h < 8; h++) { *\/ */
-    /*         /\*         uint8_t ch1 = ((addr[v] >> (7 - h)) & 0x1); *\/ */
-    /*         /\*         if (ch1 == 1 || (color != 0x05 && color != 0x0a && color != 0x0f)) { *\/ */
-    /*         /\*             screen_pixels[y + (flipy ? 7 - v : v) * 128 + x + (flipx ? 7 - h : h)] = *\/ */
-    /*         /\*                 ch1 ? color % 4 : color / 4; *\/ */
-    /*         /\*         } *\/ */
-    /*         /\*     } *\/ */
-    /*         /\* } *\/ */
-    /*         puticn(&ppu, layer, x, y, addr, d->dat[0xe] & 0xf, mode & 0x2, mode & 0x4); */
-    /*     } */
-    /*     else */
-    /*         putchr(&ppu, layer, x, y, addr, d->dat[0xe] & 0xf, mode & 0x2, mode & 0x4); */
-    /* } */
+        screen_pixels[128 * y + x] = d->dat[0xe] & 0xf;
+
+    /*     /\* if(!mode) *\/ */
+    /*     /\* putpixel(&ppu, layer, x, y, d->dat[0xe] & 0xf); *\/ */
+    /*     /\* else if(mode-- & 0x1) { *\/ */
+    /*     /\*     /\\* for (int v = 0; v < 8; v++) { *\\/ *\/ */
+    /*     /\*     /\\*     for (int h = 0; h < 8; h++) { *\\/ *\/ */
+    /*     /\*     /\\*         uint8_t ch1 = ((addr[v] >> (7 - h)) & 0x1); *\\/ *\/ */
+    /*     /\*     /\\*         if (ch1 == 1 || (color != 0x05 && color != 0x0a && color != 0x0f)) { *\\/ *\/ */
+    /*     /\*     /\\*             screen_pixels[y + (flipy ? 7 - v : v) * 128 + x + (flipx ? 7 - h : h)] = *\\/ *\/ */
+    /*     /\*     /\\*                 ch1 ? color % 4 : color / 4; *\\/ *\/ */
+    /*     /\*     /\\*         } *\\/ *\/ */
+    /*     /\*     /\\*     } *\\/ *\/ */
+    /*     /\*     /\\* } *\\/ *\/ */
+    /*     /\*     puticn(&ppu, layer, x, y, addr, d->dat[0xe] & 0xf, mode & 0x2, mode & 0x4); *\/ */
+    /*     /\* } *\/ */
+    /*     /\* else *\/ */
+    /*     /\*     putchr(&ppu, layer, x, y, addr, d->dat[0xe] & 0xf, mode & 0x2, mode & 0x4); *\/ */
+    }
 }
 
 void gpio_talk(Device *d, Uint8 b0, Uint8 w) {
@@ -133,11 +131,11 @@ void init_control(void) {
         refresh_screen();
         return;
     }
-    /* if (!initppu(&ppu, 16, 8, NULL, fg_pixels)) { */
-    /*     draw_str("ppu error", line++, 15, 0); */
-    /*     refresh_screen(); */
-    /*     return; */
-    /* } */
+    if (!initppu(&ppu, 16, 8, NULL, screen_pixels)) {
+        draw_str("ppu error", line++, 15, 0);
+        refresh_screen();
+        return;
+    }
     portuxn(&uxn, 0x0, "---", nil_talk);
     portuxn(&uxn, 0x1, "console", nil_talk);
     devscreen = portuxn(&uxn, 0x2, "screen", screen_talk);
@@ -253,11 +251,6 @@ void process_event(u8 event, u8 *data, u8 length) {
                         refresh_screen();
                         return;
                     }
-                    char s[36];
-                    strcpy("running: ", s);
-                    strcpy(rom_filenames[selected_rom], s);
-                    draw_str(s, line++, 15, 0);
-                    refresh_screen();
                     curr_page = PAGE_RUN;
                     screen_dirty = true;
                     return;
@@ -360,27 +353,24 @@ void render_arc(void) {
     // render arc LEDs here or leave blank if not used
 }
 
-/* static void blend_screen(Ppu *p, uint8_t *buf) { */
-/*     for (int i = 0; i < 128 * 64; i++) { */
-/*         buf[i] = p->fg.pixels[i * 4] ? 15 : 0; */
-/*     } */
-/* } */
-
 void render_screen(void) {
-    /* if (curr_page == PAGE_RUN) { */
-    /*     /\* blend_screen(&ppu, screen_pixels); *\/ */
-    /*     screen_draw_region(0, 0, 128, 64, fg_pixels); */
-    /* } */
+    if (curr_page == PAGE_RUN) {
+        evaluxn(&uxn, mempeek16(devctrl->dat, 0));
+        screen_draw_region(0, 0, 128, 64, screen_pixels);
+        return;
+    }
 
     if (!screen_dirty) return;
     clear_screen();
     switch (curr_page) {
-    case PAGE_RUN:
     case PAGE_LOAD:
         for (int i = 0; i < rom_filename_ct; i++) {
             draw_str(rom_filenames[i], i, 15, selected_rom == i ? 7 : 0);
         }
         break;
+    /* case PAGE_RUN: */
+    /*     draw_str("run", 0, 15, 0); */
+    /*     break; */
     default:
         draw_str("button held", 6, button_state ? 15 : 7, 0);
         draw_str("msc connected", 7, msc_connected ? 15 : 7, 0);
