@@ -50,50 +50,34 @@ Device *devscreen, *devctrl, *devgpio;
 // ----------------------------------------------------------------------------
 // functions for main.c
 
-void screen_talk(Device *d, Uint8 b0, Uint8 w);
-void gpio_talk(Device *d, Uint8 b0, Uint8 w);
-void ii_talk(Device *d, Uint8 b0, Uint8 w);
-void nil_talk(Device *d, Uint8 b0, Uint8 w);
+void screen_talk(Device *d, uint8_t b0, uint8_t w);
+void gpio_talk(Device *d, uint8_t b0, uint8_t w);
+void ii_talk(Device *d, uint8_t b0, uint8_t w);
+void nil_talk(Device *d, uint8_t b0, uint8_t w);
 void loadrom(Uxn *u, char *mem);
 void doctrl(Uxn *u, u8 mod, u8 key);
 
 void init_presets(void) {
 }
 
-void screen_talk(Device *d, Uint8 b0, Uint8 w) {
+void screen_talk(Device *d, uint8_t b0, uint8_t w) {
     if(w && b0 == 0xe) {
-        Uint16 x = mempeek16(d->dat, 0x8) & 0x7F;
-        Uint16 y = mempeek16(d->dat, 0xa) & 0x3F;
-    /*     /\* Uint8 *addr = &d->mem[mempeek16(d->dat, 0xc)]; *\/ */
-    /*     /\* Layer *layer = d->dat[0xe] >> 4 & 0x1 ? &ppu.fg : &ppu.bg; *\/ */
-    /*     /\* Uint8 mode = d->dat[0xe] >> 5; *\/ */
+        uint16_t x = mempeek16(d->dat, 0x8) & 0x7F;
+        uint16_t y = mempeek16(d->dat, 0xa) & 0x3F;
+        uint8_t *addr = &d->mem[mempeek16(d->dat, 0xc)];
+        Layer *layer = d->dat[0xe] >> 4 & 0x1 ? &ppu.fg : &ppu.bg;
+        uint8_t mode = d->dat[0xe] >> 5;
 
-        /* uint8_t color = d->dat[0xe] & 0xf; */
-        /* uint8_t flipx = mode & 0x2; */
-        /* uint8_t flipy = mode & 0x4; */
-
-        screen_pixels[128 * y + x] = d->dat[0xe] & 0xf;
-
-    /*     /\* if(!mode) *\/ */
-    /*     /\* putpixel(&ppu, layer, x, y, d->dat[0xe] & 0xf); *\/ */
-    /*     /\* else if(mode-- & 0x1) { *\/ */
-    /*     /\*     /\\* for (int v = 0; v < 8; v++) { *\\/ *\/ */
-    /*     /\*     /\\*     for (int h = 0; h < 8; h++) { *\\/ *\/ */
-    /*     /\*     /\\*         uint8_t ch1 = ((addr[v] >> (7 - h)) & 0x1); *\\/ *\/ */
-    /*     /\*     /\\*         if (ch1 == 1 || (color != 0x05 && color != 0x0a && color != 0x0f)) { *\\/ *\/ */
-    /*     /\*     /\\*             screen_pixels[y + (flipy ? 7 - v : v) * 128 + x + (flipx ? 7 - h : h)] = *\\/ *\/ */
-    /*     /\*     /\\*                 ch1 ? color % 4 : color / 4; *\\/ *\/ */
-    /*     /\*     /\\*         } *\\/ *\/ */
-    /*     /\*     /\\*     } *\\/ *\/ */
-    /*     /\*     /\\* } *\\/ *\/ */
-    /*     /\*     puticn(&ppu, layer, x, y, addr, d->dat[0xe] & 0xf, mode & 0x2, mode & 0x4); *\/ */
-    /*     /\* } *\/ */
-    /*     /\* else *\/ */
-    /*     /\*     putchr(&ppu, layer, x, y, addr, d->dat[0xe] & 0xf, mode & 0x2, mode & 0x4); *\/ */
+        if(!mode)
+            putpixel(&ppu, layer, x, y, d->dat[0xe] & 0xf);
+        else if(mode-- & 0x1)
+            puticn(&ppu, layer, x, y, addr, d->dat[0xe] & 0xf, mode & 0x2, mode & 0x4);
+        /* /\* else *\/ */
+        /* /\*     putchr(&ppu, layer, x, y, addr, d->dat[0xe] & 0xf, mode & 0x2, mode & 0x4); *\/ */
     }
 }
 
-void gpio_talk(Device *d, Uint8 b0, Uint8 w) {
+void gpio_talk(Device *d, uint8_t b0, uint8_t w) {
     switch (b0) {
         case 0x2:
             if (w) {
@@ -105,13 +89,13 @@ void gpio_talk(Device *d, Uint8 b0, Uint8 w) {
     }
 }
 
-void ii_talk(Device *d, Uint8 b0, Uint8 w) {
+void ii_talk(Device *d, uint8_t b0, uint8_t w) {
     (void)d;
     (void)b0;
     (void)w;
 }
 
-void nil_talk(Device *d, Uint8 b0, Uint8 w) {
+void nil_talk(Device *d, uint8_t b0, uint8_t w) {
     (void)d;
     (void)b0;
     (void)w;
@@ -131,7 +115,7 @@ void init_control(void) {
         refresh_screen();
         return;
     }
-    if (!initppu(&ppu, 16, 8, NULL, screen_pixels)) {
+    if (!initppu(&ppu, 16, 8, screen_pixels, screen_pixels)) {
         draw_str("ppu error", line++, 15, 0);
         refresh_screen();
         return;
@@ -356,7 +340,7 @@ void render_arc(void) {
 void render_screen(void) {
     if (curr_page == PAGE_RUN) {
         evaluxn(&uxn, mempeek16(devctrl->dat, 0));
-        screen_draw_region(0, 0, 128, 64, screen_pixels);
+        /* screen_draw_region(0, 0, 128, 64, screen_pixels); */
         return;
     }
 

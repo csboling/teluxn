@@ -1,6 +1,7 @@
 #pragma once
 
 #include <stdio.h>
+#include <stdint.h>
 
 /*
 Copyright (c) 2021 Devine Lu Linvega
@@ -13,27 +14,22 @@ THE SOFTWARE IS PROVIDED "AS IS" AND THE AUTHOR DISCLAIMS ALL WARRANTIES
 WITH REGARD TO THIS SOFTWARE.
 */
 
-typedef unsigned char Uint8;
-typedef signed char Sint8;
-typedef unsigned short Uint16;
-typedef signed short Sint16;
-
 #define PAGE_PROGRAM 0x0100
 
 typedef struct {
-	Uint8 ptr, kptr, error;
-	Uint8 dat[256];
+	uint8_t ptr, kptr, error;
+	uint8_t dat[256];
 } Stack;
 
 typedef struct {
-	Uint16 ptr;
-	Uint8 dat[65536];
+	uint16_t ptr;
+	uint8_t dat[65536];
 } Memory;
 
 typedef struct Device {
 	struct Uxn *u;
-	Uint8 addr, dat[16], *mem;
-	void (*talk)(struct Device *d, Uint8, Uint8);
+	uint8_t addr, dat[16], *mem;
+	void (*talk)(struct Device *d, uint8_t, uint8_t);
 } Device;
 
 typedef struct Uxn {
@@ -44,10 +40,10 @@ typedef struct Uxn {
 
 struct Uxn;
 
-void mempoke16(Uint8 *m, Uint16 a, Uint16 b);
-Uint16 mempeek16(Uint8 *m, Uint16 a);
+void mempoke16(uint8_t *m, uint16_t a, uint16_t b);
+uint16_t mempeek16(uint8_t *m, uint16_t a);
 
 int loaduxn(Uxn *c, char *filepath);
 int bootuxn(Uxn *c);
-int evaluxn(Uxn *u, Uint16 vec);
-Device *portuxn(Uxn *u, Uint8 id, char *name, void (*talkfn)(Device *, Uint8, Uint8));
+int evaluxn(Uxn *u, uint16_t vec);
+Device *portuxn(Uxn *u, uint8_t id, char *name, void (*talkfn)(Device *, uint8_t, uint8_t));

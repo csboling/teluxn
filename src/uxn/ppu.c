@@ -1,4 +1,7 @@
 #include "ppu.h"
+#include "interface.h"
+#include "util.h"
+#include <string.h>
 
 /*
 Copyright (c) 2021 Devine Lu Linvega
@@ -42,10 +45,10 @@ void
 clear(Ppu *p)
 {
 	int i, sz = p->height * p->width;
-	for(i = 0; i < sz; ++i) {
-		p->fg.pixels[i] = p->fg.colors[0];
-		/* p->bg.pixels[i] = p->bg.colors[0]; */
-	}
+	/* for(i = 0; i < sz; ++i) { */
+	/* 	p->fg.pixels[i] = p->fg.colors[0]; */
+	/* 	/\* p->bg.pixels[i] = p->bg.colors[0]; *\/ */
+	/* } */
 }
 
 void
@@ -69,7 +72,14 @@ putpixel(Ppu *p, Layer *layer, uint16_t x, uint16_t y, uint8_t color)
 {
 	if(x >= p->width || y >= p->height)
 		return;
-	layer->pixels[y * p->width + x] = 15; /* layer->colors[color]; */
+	char s[36];
+	itoa(x, s, 10);
+	draw_str(s, 6, 15, 0);
+	memset(s, 0, 36);
+	itoa(y, s, 10);
+	draw_str(s, 7, 15, 0);
+	refresh_screen();
+	layer->pixels[(y * p->width + x) & 0x00FF] = 15; /* layer->colors[color]; */
 }
 
 void
