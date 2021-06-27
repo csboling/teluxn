@@ -11,8 +11,11 @@
 
 #include "compiler.h"
 #include "string.h"
+
+#include "kbd.h"
 #include "conf_usb_host.h"  // needed in order to include "usb_protocol_hid.h"
 #include "usb_protocol_hid.h"
+
 #include "screen.h"
 #include "util.h"
 
@@ -40,6 +43,7 @@ enum page_t curr_page = PAGE_BOOT;
 bool screen_dirty = false;
 bool button_state;
 bool msc_connected;
+bool rom_loaded;
 
 Uxn uxn;
 Ppu ppu;
@@ -56,7 +60,6 @@ void gpio_talk(Device *d, uint8_t b0, uint8_t w);
 void ii_talk(Device *d, uint8_t b0, uint8_t w);
 void nil_talk(Device *d, uint8_t b0, uint8_t w);
 void loadrom(Uxn *u, char *mem);
-void doctrl(Uxn *u, u8 mod, u8 key);
 
 void init_presets(void) {
 }
@@ -156,41 +159,53 @@ void init_control(void) {
     refresh_screen();
 }
 
-void doctrl(Uxn *u, u8 mod, u8 z) {
+static void doctrl(Uxn *u, u8 mod, u8 key, u8 is_release) {
     u8 flag = 0x00;
-    switch (mod) {
-    case HID_MODIFIER_LEFT_CTRL: flag = 0x01; break;
-    case HID_MODIFIER_LEFT_ALT: flag = 0x02; break;
-    case HID_MODIFIER_LEFT_SHIFT: flag = 0x04; break;
-    case HID_ESCAPE: flag = 0x08; break;
-    case HID_UP: flag = 0x10; break;
-    case HID_DOWN: flag = 0x20; break;
-    case HID_LEFT: flag = 0x40; break;
-    case HID_RIGHT: flag = 0x80; break;
+    if (mod & HID_MODIFIER_LEFT_CTRL) flag |= 0x01;
+    if (mod & HID_MODIFIER_RIGHT_CTRL) flag |= 0x01;
+    if (mod & HID_MODIFIER_LEFT_ALT) flag |= 0x02;
+    if (mod & HID_MODIFIER_RIGHT_ALT) flag |= 0x02;
+    if (mod & HID_MODIFIER_LEFT_SHIFT) flag |= 0x04;
+    if (mod & HID_MODIFIER_RIGHT_SHIFT) flag |= 0x04;
+    if (key == HID_ESCAPE) flag |= 0x08;
+    if (key == HID_UP) flag |= 0x10;
+    if (key == HID_DOWN) flag |= 0x20;
+    if (key == HID_LEFT) flag |= 0x40;
+    if (key == HID_RIGHT) flag |= 0x80;
+
+    if (flag) {
+        if (is_release) {
+            devctrl->dat[2] &= (~flag);
+        }
+        else {
+            devctrl->dat[2] |= flag;
+        }
     }
-    if (flag && z)
-        devctrl->dat[2] |= flag;
-    else if (flag)
-        devctrl->dat[2] &= (~flag);
 }
 
-static bool process_sys_keys(u8 mod, u8 key, u8 z) {
-    return false;
-    /* switch (curr_page) { */
-    /* case PAGE_BOOT: */
-    /*     if (match_no_mod(mod, key, HID_ENTER)) { */
-    /*         eval_line(&uxn, line_editor.buffer, line_editor.length); */
-    /*     } */
-    /*     else { */
-    /*         line_editor_process_keys(&line_editor, key, mod, z == 1); */
-    /*     } */
-    /*     return true; */
-    /* /\* case PAGE_EDIT: *\/ */
-    /* /\*     return true; *\/ */
-    /* default: */
-    /*     return false; */
-    /* } */
+static uint8_t translate_keycode(u8 key, u8 mod) {
+    switch (key) {
+        case HID_ENTER: return 0x0a;
+        case HID_BACKSPACE: return 0x08;
+        case HID_TAB: return 0x09;
+        case HID_ESCAPE: return 0x1B;
+        case HID_DELETE: return 0x7F;
+    }
+
+    // latin alphabet
+    if (key >= HID_A && key <= HID_Z) {
+        if ((mod & HID_MODIFIER_LEFT_SHIFT) || (mod & HID_MODIFIER_RIGHT_SHIFT)) {
+            return key + 0x3D;
+        }
+        else {
+            return key + 0x5D;
+        }
+    }
+
+    return hid_to_ascii(key, mod);
 }
+
+int release_count = 0;
 
 void process_event(u8 event, u8 *data, u8 length) {
     switch (event) {
@@ -217,12 +232,30 @@ void process_event(u8 event, u8 *data, u8 length) {
             break;
 
         case KEYBOARD_KEY:
-            if (length == 3) {
-                devctrl->dat[3] = data[1];
-                doctrl(&uxn, data[0], data[2]);
-                if (!process_sys_keys(data[0], data[1], data[2])) {
-                    evaluxn(&uxn, mempeek16(devctrl->dat, 0));
+            if (length == 4) {
+
+                if (data[3]) {
+                    release_count++;
                 }
+
+                /* char s[36]; */
+                /* itoa(data[0], s, 10); */
+                /* draw_str(s, 0, 15, 0); */
+                /* itoa(data[1], s, 10); */
+                /* draw_str(s, 1, 15, 0); */
+                /* itoa(data[2], s, 10); */
+                /* draw_str(s, 6, 15, 0); */
+                /* memset(s, 0, 36); */
+                /* itoa(data[3], s, 10); */
+                /* strcat(s, " "); */
+                /* itoa(release_count, s + 2, 10); */
+                /* draw_str(s, 7, 15, 0); */
+                /* refresh_screen(); */
+
+                devctrl->dat[3] = translate_keycode(data[1], data[0]);
+                doctrl(&uxn, data[0], data[1], data[3]);
+                evaluxn(&uxn, mempeek16(devctrl->dat, 0));
+                devctrl->dat[3] = 0;
             }
             break;
 
@@ -237,19 +270,18 @@ void process_event(u8 event, u8 *data, u8 length) {
                 int line = 0;
                 if (rom_filename_ct > 0 && selected_rom < rom_filename_ct) {
                     screen_dirty = false;
-                    print_status(&line, "load file:");
-                    print_status(&line, rom_filenames[selected_rom]);
                     if (!load_rom_file(&line, &uxn, rom_filenames[selected_rom])) {
                         print_err(&line, "couldn't load rom");
+                        rom_loaded = false;
                         return;
                     }
-                    print_status(&line, "rom loaded");
+                    clear_screen();
                     if (!evaluxn(&uxn, PAGE_PROGRAM)) {
                         draw_str("error running rom", line++, 15, 0);
                         refresh_screen();
                         return;
                     }
-                    clear_screen();
+                    rom_loaded = true;
                     curr_page = PAGE_RUN;
                     return;
                 }
@@ -297,7 +329,6 @@ void process_event(u8 event, u8 *data, u8 length) {
 
         case MASS_STORAGE_CONNECTED: {
             int line = 0;
-            clear_screen();
             if (length != 1) {
                 draw_str("missing event data", line++, 15, 0);
                 refresh_screen();
@@ -306,14 +337,11 @@ void process_event(u8 event, u8 *data, u8 length) {
             msc_connected = data[0] != 0;
 
             if (msc_connected) {
-                draw_str("scan for files", line++, 15, 0);
-                refresh_screen();
+                clear_screen();
 
                 int files = list_files(&line);
                 if (files > 0) {
-                    print_status(&line, "found rom(s)");
                     selected_rom = 0;
-
                     curr_page = PAGE_LOAD;
                     screen_dirty = true;
                     return;
@@ -326,8 +354,9 @@ void process_event(u8 event, u8 *data, u8 length) {
                 }
             }
             else {
-                draw_str("msc disconnected", line++, 15, 0);
-                refresh_screen();
+                if (rom_loaded) {
+                    curr_page = PAGE_RUN;
+                }
             }
             break;
         }
