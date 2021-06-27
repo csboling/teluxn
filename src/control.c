@@ -50,6 +50,7 @@ Device *devscreen, *devctrl, *devgpio;
 // ----------------------------------------------------------------------------
 // functions for main.c
 
+void system_talk(Device *d, uint8_t b0, uint8_t w);
 void screen_talk(Device *d, uint8_t b0, uint8_t w);
 void gpio_talk(Device *d, uint8_t b0, uint8_t w);
 void ii_talk(Device *d, uint8_t b0, uint8_t w);
@@ -60,20 +61,30 @@ void doctrl(Uxn *u, u8 mod, u8 key);
 void init_presets(void) {
 }
 
+void system_talk(Device *d, uint8_t b0, uint8_t w) {
+    if (!w) {
+        d->dat[0x2] = d->u->wst.ptr;
+        d->dat[0x3] = d->u->rst.ptr;
+    } else {
+        putcolors(&ppu, &d->dat[0x8]);
+        /* reqdraw = 1; */
+    }
+}
+
 void screen_talk(Device *d, uint8_t b0, uint8_t w) {
     if(w && b0 == 0xe) {
         uint16_t x = mempeek16(d->dat, 0x8) & 0x7F;
         uint16_t y = mempeek16(d->dat, 0xa) & 0x3F;
         uint8_t *addr = &d->mem[mempeek16(d->dat, 0xc)];
-        Layer *layer = d->dat[0xe] >> 4 & 0x1 ? &ppu.fg : &ppu.bg;
+        Layer *layer = (d->dat[0xe] >> 4 & 0x1) ? &ppu.fg : &ppu.bg;
         uint8_t mode = d->dat[0xe] >> 5;
 
         if(!mode)
             putpixel(&ppu, layer, x, y, d->dat[0xe] & 0xf);
         else if(mode-- & 0x1)
             puticn(&ppu, layer, x, y, addr, d->dat[0xe] & 0xf, mode & 0x2, mode & 0x4);
-        /* /\* else *\/ */
-        /* /\*     putchr(&ppu, layer, x, y, addr, d->dat[0xe] & 0xf, mode & 0x2, mode & 0x4); *\/ */
+        else
+            putchr(&ppu, layer, x, y, addr, d->dat[0xe] & 0xf, mode & 0x2, mode & 0x4);
     }
 }
 
@@ -120,7 +131,7 @@ void init_control(void) {
         refresh_screen();
         return;
     }
-    portuxn(&uxn, 0x0, "---", nil_talk);
+    portuxn(&uxn, 0x0, "system", system_talk);
     portuxn(&uxn, 0x1, "console", nil_talk);
     devscreen = portuxn(&uxn, 0x2, "screen", screen_talk);
     portuxn(&uxn, 0x3, "---", nil_talk);
@@ -219,44 +230,17 @@ void process_event(u8 event, u8 *data, u8 length) {
             break;
 
         case FRONT_BUTTON_PRESSED: {
-            clear_screen();
-            int line = 0;
-            print_status(&line, "button evt");
             if (length != 1) return;
             button_state = data[0];
 
-            if (button_state) {
-                print_status(&line, "button on");
-            }
-            else {
-                print_status(&line, "button off");
-            }
-
-            if (curr_page == PAGE_LOAD) {
-                print_status(&line, "page load");
-            }
-            else {
-                print_status(&line, "page not load");
-            }
-
             if (curr_page == PAGE_LOAD && !button_state) {
+                int line = 0;
                 if (rom_filename_ct > 0 && selected_rom < rom_filename_ct) {
-                    /* int err = open_drive(&line); */
-                    /* if (err) { */
-                    /*     char s[36]; */
-                    /*     strcpy(s, "usb err "); */
-                    /*     itoa(-err, s + 8, 10); */
-                    /*     draw_str(s, line++, 15, 0); */
-                    /*     refresh_screen(); */
-                    /*     return; */
-                    /* } */
                     screen_dirty = false;
                     print_status(&line, "load file:");
                     print_status(&line, rom_filenames[selected_rom]);
                     if (!load_rom_file(&line, &uxn, rom_filenames[selected_rom])) {
                         print_err(&line, "couldn't load rom");
-                        /* draw_str("error loading rom", line++, 15, 0); */
-                        /* refresh_screen(); */
                         return;
                     }
                     print_status(&line, "rom loaded");
@@ -265,9 +249,8 @@ void process_event(u8 event, u8 *data, u8 length) {
                         refresh_screen();
                         return;
                     }
-                    print_status(&line, "rom running");
+                    clear_screen();
                     curr_page = PAGE_RUN;
-                    screen_dirty = true;
                     return;
                 }
                 else {
@@ -331,14 +314,8 @@ void process_event(u8 event, u8 *data, u8 length) {
                     print_status(&line, "found rom(s)");
                     selected_rom = 0;
 
-                    clear_screen();
-                    for (int i = 0; i < rom_filename_ct; i++) {
-                        draw_str(rom_filenames[i], i, 15, selected_rom == i ? 7 : 0);
-                    }
-                    refresh_screen();
-
                     curr_page = PAGE_LOAD;
-                    /* screen_dirty = true; */
+                    screen_dirty = true;
                     return;
                 }
                 else if (files < 0) {
@@ -369,27 +346,24 @@ void render_arc(void) {
 }
 
 void render_screen(void) {
-    /* if (curr_page == PAGE_RUN) { */
-    /*     evaluxn(&uxn, mempeek16(devctrl->dat, 0)); */
-    /*     /\* screen_draw_region(0, 0, 128, 64, screen_pixels); *\/ */
-    /*     return; */
-    /* } */
+    if (curr_page == PAGE_RUN) {
+        evaluxn(&uxn, mempeek16(devctrl->dat, 0));
+        screen_draw_region(0, 0, 128, 64, screen_pixels);
+        return;
+    }
 
-    /* if (!screen_dirty) return; */
-    /* clear_screen(); */
-    /* switch (curr_page) { */
-    /* case PAGE_LOAD: */
-    /*     /\* for (int i = 0; i < rom_filename_ct; i++) { *\/ */
-    /*     /\*     draw_str(rom_filenames[i], i, 15, selected_rom == i ? 7 : 0); *\/ */
-    /*     /\* } *\/ */
-    /*     break; */
-    /* /\* case PAGE_RUN: *\/ */
-    /* /\*     draw_str("run", 0, 15, 0); *\/ */
-    /* /\*     break; *\/ */
-    /* default: */
-    /*     draw_str("button held", 6, button_state ? 15 : 7, 0); */
-    /*     draw_str("msc connected", 7, msc_connected ? 15 : 7, 0); */
-    /*     break; */
-    /* } */
-    /* refresh_screen(); */
+    if (!screen_dirty) return;
+    clear_screen();
+    switch (curr_page) {
+    case PAGE_LOAD:
+        for (int i = 0; i < rom_filename_ct; i++) {
+            draw_str(rom_filenames[i], i, 15, selected_rom == i ? 7 : 0);
+        }
+        break;
+    default:
+        draw_str("button held", 6, button_state ? 15 : 7, 0);
+        draw_str("msc connected", 7, msc_connected ? 15 : 7, 0);
+        break;
+    }
+    refresh_screen();
 }

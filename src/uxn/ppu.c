@@ -45,10 +45,10 @@ void
 clear(Ppu *p)
 {
 	int i, sz = p->height * p->width;
-	/* for(i = 0; i < sz; ++i) { */
-	/* 	p->fg.pixels[i] = p->fg.colors[0]; */
-	/* 	/\* p->bg.pixels[i] = p->bg.colors[0]; *\/ */
-	/* } */
+	for(i = 0; i < sz; ++i) {
+		p->fg.pixels[i] = p->fg.colors[0];
+		p->bg.pixels[i] = p->bg.colors[0];
+	}
 }
 
 void
@@ -61,7 +61,8 @@ putcolors(Ppu *p, uint8_t *addr)
 		/* 	g = (*(addr + 2 + i / 2) >> (!(i % 2) << 2)) & 0x0f, */
 		/* 	b = (*(addr + 4 + i / 2) >> (!(i % 2) << 2)) & 0x0f; */
 		/* p->bg.colors[i] = 0; //0xff000000 | (r << 20) | (r << 16) | (g << 12) | (g << 8) | (b << 4) | b; */
-		p->fg.colors[i] = 15; //0xff000000 | (r << 20) | (r << 16) | (g << 12) | (g << 8) | (b << 4) | b;
+		p->bg.colors[i] = i * 2 + 1;
+		p->fg.colors[i] = 8 + i * 2; //0xff000000 | (r << 20) | (r << 16) | (g << 12) | (g << 8) | (b << 4) | b;
 	}
 	p->fg.colors[0] = 0;
 	clear(p);
@@ -70,25 +71,18 @@ putcolors(Ppu *p, uint8_t *addr)
 void
 putpixel(Ppu *p, Layer *layer, uint16_t x, uint16_t y, uint8_t color)
 {
-	if(x >= p->width || y >= p->height)
-		return;
-	char s[36];
-	itoa(x, s, 10);
-	draw_str(s, 6, 15, 0);
-	memset(s, 0, 36);
-	itoa(y, s, 10);
-	draw_str(s, 7, 15, 0);
-	refresh_screen();
-	layer->pixels[(y * p->width + x) & 0x00FF] = 15; /* layer->colors[color]; */
+	if ((x >= 128) || (y >= 64)) return;
+	layer->pixels[y * 128 + x] = layer->colors[color];
 }
 
 void
 puticn(Ppu *p, Layer *layer, uint16_t x, uint16_t y, uint8_t *sprite, uint8_t color, uint8_t flipx, uint8_t flipy)
 {
 	uint16_t v, h;
-	for(v = 0; v < 8; v++)
+	uint8_t ch1;
+	for(v = 0; v < 8; v++) {
 		for(h = 0; h < 8; h++) {
-			uint8_t ch1 = ((sprite[v] >> (7 - h)) & 0x1);
+			ch1 = ((sprite[v] >> (7 - h)) & 0x1);
 			if(ch1 == 1 || (color != 0x05 && color != 0x0a && color != 0x0f))
 				putpixel(p,
 					layer,
@@ -96,6 +90,7 @@ puticn(Ppu *p, Layer *layer, uint16_t x, uint16_t y, uint8_t *sprite, uint8_t co
 					y + (flipy ? 7 - v : v),
 					ch1 ? color % 4 : color / 4);
 		}
+	}
 }
 
 void
@@ -142,7 +137,7 @@ initppu(Ppu *p, uint8_t hor, uint8_t ver, uint8_t *bg, uint8_t *fg)
 	p->ver = ver;
 	p->width = 8 * p->hor;
 	p->height = 8 * p->ver;
-//	p->bg.pixels = bg;
+	p->bg.pixels = bg;
 	p->fg.pixels = fg;
 	clear(p);
 	return 1;
