@@ -219,22 +219,53 @@ void process_event(u8 event, u8 *data, u8 length) {
             break;
 
         case FRONT_BUTTON_PRESSED: {
+            clear_screen();
+            int line = 0;
+            print_status(&line, "button evt");
             if (length != 1) return;
             button_state = data[0];
-            int line = 0;
+
+            if (button_state) {
+                print_status(&line, "button on");
+            }
+            else {
+                print_status(&line, "button off");
+            }
+
+            if (curr_page == PAGE_LOAD) {
+                print_status(&line, "page load");
+            }
+            else {
+                print_status(&line, "page not load");
+            }
+
             if (curr_page == PAGE_LOAD && !button_state) {
-                clear_screen();
                 if (rom_filename_ct > 0 && selected_rom < rom_filename_ct) {
-                    if (!load_rom_file(&uxn, rom_filenames[selected_rom])) {
-                        draw_str("error loading rom", line++, 15, 0);
-                        refresh_screen();
+                    /* int err = open_drive(&line); */
+                    /* if (err) { */
+                    /*     char s[36]; */
+                    /*     strcpy(s, "usb err "); */
+                    /*     itoa(-err, s + 8, 10); */
+                    /*     draw_str(s, line++, 15, 0); */
+                    /*     refresh_screen(); */
+                    /*     return; */
+                    /* } */
+                    screen_dirty = false;
+                    print_status(&line, "load file:");
+                    print_status(&line, rom_filenames[selected_rom]);
+                    if (!load_rom_file(&line, &uxn, rom_filenames[selected_rom])) {
+                        print_err(&line, "couldn't load rom");
+                        /* draw_str("error loading rom", line++, 15, 0); */
+                        /* refresh_screen(); */
                         return;
                     }
+                    print_status(&line, "rom loaded");
                     if (!evaluxn(&uxn, PAGE_PROGRAM)) {
                         draw_str("error running rom", line++, 15, 0);
                         refresh_screen();
                         return;
                     }
+                    print_status(&line, "rom running");
                     curr_page = PAGE_RUN;
                     screen_dirty = true;
                     return;
@@ -295,26 +326,26 @@ void process_event(u8 event, u8 *data, u8 length) {
                 draw_str("scan for files", line++, 15, 0);
                 refresh_screen();
 
-                int err = open_drive();
-                if (err < 0) {
-                    char s[36];
-                    strcpy(s, "usb err ");
-                    itoa(-err, s + 8, 10);
-                    draw_str(s, line++, 15, 0);
+                int files = list_files(&line);
+                if (files > 0) {
+                    print_status(&line, "found rom(s)");
+                    selected_rom = 0;
+
+                    clear_screen();
+                    for (int i = 0; i < rom_filename_ct; i++) {
+                        draw_str(rom_filenames[i], i, 15, selected_rom == i ? 7 : 0);
+                    }
                     refresh_screen();
+
+                    curr_page = PAGE_LOAD;
+                    /* screen_dirty = true; */
                     return;
                 }
-
-                int files = list_files();
-                if (files > 0) {
-                    curr_page = PAGE_LOAD;
-                    screen_dirty = true;
-                    return;
+                else if (files < 0) {
+                    print_err(&line, "file err ");
                 }
                 else {
-                    draw_str("no .rom files", line++, 15, 0);
-                    refresh_screen();
-                    return;
+                    print_status(&line, "no .rom files");
                 }
             }
             else {
@@ -338,27 +369,27 @@ void render_arc(void) {
 }
 
 void render_screen(void) {
-    if (curr_page == PAGE_RUN) {
-        evaluxn(&uxn, mempeek16(devctrl->dat, 0));
-        /* screen_draw_region(0, 0, 128, 64, screen_pixels); */
-        return;
-    }
+    /* if (curr_page == PAGE_RUN) { */
+    /*     evaluxn(&uxn, mempeek16(devctrl->dat, 0)); */
+    /*     /\* screen_draw_region(0, 0, 128, 64, screen_pixels); *\/ */
+    /*     return; */
+    /* } */
 
-    if (!screen_dirty) return;
-    clear_screen();
-    switch (curr_page) {
-    case PAGE_LOAD:
-        for (int i = 0; i < rom_filename_ct; i++) {
-            draw_str(rom_filenames[i], i, 15, selected_rom == i ? 7 : 0);
-        }
-        break;
-    /* case PAGE_RUN: */
-    /*     draw_str("run", 0, 15, 0); */
+    /* if (!screen_dirty) return; */
+    /* clear_screen(); */
+    /* switch (curr_page) { */
+    /* case PAGE_LOAD: */
+    /*     /\* for (int i = 0; i < rom_filename_ct; i++) { *\/ */
+    /*     /\*     draw_str(rom_filenames[i], i, 15, selected_rom == i ? 7 : 0); *\/ */
+    /*     /\* } *\/ */
     /*     break; */
-    default:
-        draw_str("button held", 6, button_state ? 15 : 7, 0);
-        draw_str("msc connected", 7, msc_connected ? 15 : 7, 0);
-        break;
-    }
-    refresh_screen();
+    /* /\* case PAGE_RUN: *\/ */
+    /* /\*     draw_str("run", 0, 15, 0); *\/ */
+    /* /\*     break; *\/ */
+    /* default: */
+    /*     draw_str("button held", 6, button_state ? 15 : 7, 0); */
+    /*     draw_str("msc connected", 7, msc_connected ? 15 : 7, 0); */
+    /*     break; */
+    /* } */
+    /* refresh_screen(); */
 }
