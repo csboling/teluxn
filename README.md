@@ -1,6 +1,6 @@
 # teluxn
 
-teluxn is an [uxn](https://wiki.xxiivv.com/site/uxn.html) emulator for the monome teletype.
+teluxn is an [uxn](https://wiki.xxiivv.com/site/uxn.html) emulator for the [monome teletype](http://monome.org/docs/teletype/).
 
 | addr | device | 0x00   | 0x08 |
 | ---- | ------ | ------ | ---- |
