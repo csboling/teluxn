@@ -374,6 +374,13 @@ void render_arc(void) {
     // render arc LEDs here or leave blank if not used
 }
 
+uint8_t knob_scale(uint8_t s) {
+    uint32_t t = get_knob_value(0) >> 4;
+    t *= s;
+    t >>= 12;
+    return (uint8_t)t;
+}
+
 void render_screen(void) {
     if (curr_page == PAGE_RUN) {
         evaluxn(&uxn, mempeek16(devctrl->dat, 0));
@@ -385,13 +392,10 @@ void render_screen(void) {
     clear_screen();
     switch (curr_page) {
     case PAGE_LOAD:
+        selected_rom = knob_scale(rom_filename_ct);
         for (int i = 0; i < rom_filename_ct; i++) {
             draw_str(rom_filenames[i], i, 15, selected_rom == i ? 7 : 0);
         }
-        break;
-    default:
-        draw_str("button held", 6, button_state ? 15 : 7, 0);
-        draw_str("msc connected", 7, msc_connected ? 15 : 7, 0);
         break;
     }
     refresh_screen();
